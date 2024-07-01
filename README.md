@@ -13,9 +13,10 @@ This project leverages AI models and APIs to generate a fairytale based on the w
 To get started with this project, ensure you have:
 - An internet connection.
 - Access to the following accounts and tokens:
-  - **OpenWeatherMap**: Sign up for an API key at https://home.openweathermap.org/users/sign_up.
-  - **Yandex Cloud**: Create an account and obtain a folder ID and service account token with the “ai.languageModels.user” role.
-  - **Sber**: Obtain an access token for the Gigachat API.
+  - [OpenWeatherMap](https://openweathermap.org/api): Sign up for an API key at https://home.openweathermap.org/users/sign_up.
+  - [Yandex Cloud](https://yandex.cloud/ru/docs/foundation-models/concepts/yandexgpt/): Create an account and obtain a folder ID and service account token with the “ai.languageModels.user” role.
+  - [Sber](https://developers.sber.ru/docs/ru/gigachat/api/overview): Obtain an access token for the Gigachat API.
+
 
 ## Usage
 
