@@ -1,5 +1,7 @@
 import requests
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from weather import get_weather_forecast
 from config import weather_api_key, gigachat_api_url, gigachat_token, yandex_api_url, yandex_token, yandex_project_id
 # Для работы понадобятся:
@@ -35,6 +37,7 @@ def get_fairy_tale_from_gigachat(api_url, api_key, genre, city, weather, max_len
     }
 
     start_time = time.time()
+    # verify=False нужен если не установлены сертификаты НУЦ Минцифры
     response = requests.post(api_url, headers=headers, json=data, verify=False)
     end_time = time.time()
 
@@ -85,20 +88,30 @@ parsed_forecast = get_weather_forecast(requested_city, weather_api_key)  # Па�
 requested_max_length = int(input("Длина сказки в символах: "))
 
 
-# Делаем запрос к нейросети
-yandex_response, yandex_time = get_fairy_tale_from_yandex_gpt(yandex_api_url, yandex_token, yandex_project_id,
+# Делаем запрос к нейросети в параллельном режиме
+with ThreadPoolExecutor() as executor:
+    future_yandex = executor.submit(get_fairy_tale_from_yandex_gpt, yandex_api_url, yandex_token, yandex_project_id,
                                                               requested_genre, requested_city, parsed_forecast,
                                                               requested_max_length)
-gigachat_response, gigachat_time = get_fairy_tale_from_gigachat(gigachat_api_url, gigachat_token, requested_genre,
+    future_gigachat = executor.submit(get_fairy_tale_from_gigachat, gigachat_api_url, gigachat_token, requested_genre,
                                                                 requested_city, parsed_forecast, requested_max_length)
+
+    # Собираем результаты в словарь
+    results = {}
+    for future in as_completed([future_yandex, future_gigachat]):
+        if future == future_yandex:
+            results['yandex'] = future.result()
+        else:
+            results['gigachat'] = future.result()
+
 
 # Записываем время и ответ в файл
 with open('yandex_response.txt', 'w', encoding='utf-8') as f:
-    f.write(f"Время работы yandex-gpt: {yandex_time} seconds\n")
-    f.write(yandex_response)
-print(f"Yandex-gpt время работы: {yandex_time}, файл с ответом: gigachat_response.txt.")
+    f.write(f"Время работы yandex-gpt: {results['yandex'][1]} seconds\n")
+    f.write(results['yandex'][0])
+print(f"Yandex-gpt время работы: {results['yandex'][1]}, файл с ответом: gigachat_response.txt.")
 
 with open('gigachat_response.txt', 'w', encoding='utf-8') as f:
-    f.write(f"Время работы gigachat: {gigachat_time} seconds\n")
-    f.write(gigachat_response)
-print(f"Gigachat время работы: {gigachat_time}, файл с ответом: gigachat_response.txt.")
+    f.write(f"Время работы gigachat: {results['gigachat'][1]} seconds\n")
+    f.write(results['gigachat'][0])
+print(f"Gigachat время работы: {results['gigachat'][1]}, файл с ответом: gigachat_response.txt.")
