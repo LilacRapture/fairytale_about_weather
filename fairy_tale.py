@@ -1,8 +1,7 @@
-import requests
-import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import aiohttp
+import asyncio
 
-from weather import get_weather_forecast
+from weather_async import get_weather_forecast
 from config import weather_api_key, gigachat_api_url, gigachat_token, yandex_api_url, yandex_token, yandex_project_id
 # Для работы понадобятся:
 # weather_api_key - токен OpenWeatherMap API
@@ -14,7 +13,7 @@ from config import weather_api_key, gigachat_api_url, gigachat_token, yandex_api
 
 
 # Функция получает на вход url модели нейросети, токен для api (должен быть сгенерирован) и параметры для запроса
-def get_fairy_tale_from_gigachat(api_url, api_key, genre, city, weather, max_length):
+async def get_fairy_tale_from_gigachat(api_url, api_key, genre, city, weather, max_length):
     prompt = (f"Придумай сказку в жанре {genre} про погоду на завтра {weather} в городе {city}. "
               f"Длина сказки не больше {max_length} символов.")
 
@@ -36,18 +35,17 @@ def get_fairy_tale_from_gigachat(api_url, api_key, genre, city, weather, max_len
         "max_tokens": max_length,  # Максимальное количество символов в ответе
     }
 
-    start_time = time.time()
-    # verify=False нужен если не установлены сертификаты НУЦ Минцифры
-    response = requests.post(api_url, headers=headers, json=data, verify=False)
-    end_time = time.time()
+    async with aiohttp.ClientSession() as session:
+        start_time = asyncio.get_event_loop().time()
+        async with session.post(api_url, headers=headers, json=data) as response:
+            end_time = asyncio.get_event_loop().time()
+            response_time = end_time - start_time
+            data = await response.json()
+            tale = data['choices'][0]['message']['content']
+            return tale, response_time
 
-    response_time = end_time - start_time  # Считаем время работы
-    response_text = response.json()['choices'][0]['message']['content']  # Достаём ответ сети
 
-    return response_text, response_time
-
-
-def get_fairy_tale_from_yandex_gpt(api_url, api_key, project_id, genre, city, weather, max_length):
+async def get_fairy_tale_from_yandex_gpt(api_url, api_key, project_id, genre, city, weather, max_length):
     prompt = (f"Придумай сказку в жанре {genre} про погоду на завтра {weather} в городе {city}. "
               f"Длина сказки не больше {max_length} символов.")
 
@@ -71,47 +69,44 @@ def get_fairy_tale_from_yandex_gpt(api_url, api_key, project_id, genre, city, we
         ]
     }
 
-    start_time = time.time()
-    response = requests.post(api_url, headers=headers, json=data)
-    end_time = time.time()
-
-    response_time = end_time - start_time
-    response_text = response.json()['result']['alternatives'][0]['message']['text']  # Достаём ответ сети
-
-    return response_text, response_time
-
-
-# Запрос входных параметров
-requested_genre = input("Введите жанр: ")
-requested_city = input("Введите город: ")
-parsed_forecast = get_weather_forecast(requested_city, weather_api_key)  # Парсим погоду в желаемом месте
-requested_max_length = int(input("Длина сказки в символах: "))
+    async with aiohttp.ClientSession() as session:
+        start_time = asyncio.get_event_loop().time()
+        async with session.post(api_url, headers=headers, json=data) as response:
+            end_time = asyncio.get_event_loop().time()
+            response_time = end_time - start_time
+            data = await response.json()
+            tale = data['result']['alternatives'][0]['message']['text']
+            return tale, response_time
 
 
-# Делаем запрос к нейросети в параллельном режиме
-with ThreadPoolExecutor() as executor:
-    future_yandex = executor.submit(get_fairy_tale_from_yandex_gpt, yandex_api_url, yandex_token, yandex_project_id,
-                                                              requested_genre, requested_city, parsed_forecast,
-                                                              requested_max_length)
-    future_gigachat = executor.submit(get_fairy_tale_from_gigachat, gigachat_api_url, gigachat_token, requested_genre,
-                                                                requested_city, parsed_forecast, requested_max_length)
+async def main():
+    # Запрос входных параметров
+    requested_genre = input("Введите жанр: ")
+    requested_city = input("Введите город: ")
+    parsed_forecast = await get_weather_forecast(requested_city, weather_api_key)  # Парсим погоду в желаемом месте
+    requested_max_length = int(input("Длина сказки в символах: "))
 
+    # Делаем запрос к нейросети в параллельном режиме
+    results = await asyncio.gather(
+        get_fairy_tale_from_yandex_gpt(yandex_api_url, yandex_token, yandex_project_id, requested_genre, requested_city,
+                                       parsed_forecast, requested_max_length),
+        get_fairy_tale_from_gigachat(gigachat_api_url, gigachat_token, requested_genre, requested_city, parsed_forecast,
+                                     requested_max_length)
+    )
     # Собираем результаты в словарь
-    results = {}
-    for future in as_completed([future_yandex, future_gigachat]):
-        if future == future_yandex:
-            results['yandex'] = future.result()
-        else:
-            results['gigachat'] = future.result()
+    yandex_response_text, yandex_response_time = results[0]
+    gigachat_response_text, gigachat_response_time = results[1]
+
+    # Записываем время и ответ в файл
+    with open('yandex_response.txt', 'w', encoding='utf-8') as f:
+        f.write(f"Время работы yandex-gpt: {yandex_response_time} секунд\n")
+        f.write(yandex_response_text)
+    print(f"Yandex-gpt время работы: {yandex_response_time} секунд, файл с ответом: gigachat_response.txt.")
+
+    with open('gigachat_response.txt', 'w', encoding='utf-8') as f:
+        f.write(f"Время работы gigachat: {gigachat_response_time} секунд\n")
+        f.write(gigachat_response_text)
+    print(f"Gigachat время работы: {gigachat_response_time} секунд, файл с ответом: gigachat_response.txt.")
 
 
-# Записываем время и ответ в файл
-with open('yandex_response.txt', 'w', encoding='utf-8') as f:
-    f.write(f"Время работы yandex-gpt: {results['yandex'][1]} seconds\n")
-    f.write(results['yandex'][0])
-print(f"Yandex-gpt время работы: {results['yandex'][1]}, файл с ответом: gigachat_response.txt.")
-
-with open('gigachat_response.txt', 'w', encoding='utf-8') as f:
-    f.write(f"Время работы gigachat: {results['gigachat'][1]} seconds\n")
-    f.write(results['gigachat'][0])
-print(f"Gigachat время работы: {results['gigachat'][1]}, файл с ответом: gigachat_response.txt.")
+asyncio.run(main())
