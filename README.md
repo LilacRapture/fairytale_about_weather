@@ -3,7 +3,7 @@
 
 ## Overview
 
-This project leverages AI models and APIs to generate a fairytale based on the weather conditions of a specific location. It utilizes several APIs and AI services:
+This project leverages AI models and APIs to generate a fairytale based on the weather conditions of a specific location and measure the time taken to generate answer. It utilizes several APIs and AI services:
 - **OpenWeatherMap** for fetching weather forecasts based on geographical coordinates.
 - **YandexGPT** for crafting the fairytale content.
 - **Gigachat** for crafting the fairytale content.
